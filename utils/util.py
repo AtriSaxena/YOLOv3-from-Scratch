@@ -35,11 +35,19 @@ def predict_tranform(prediction, inp_dim, anchors, num_classes, CUDA=True):
     if CUDA:
         x_offset = x_offset.cuda()
         y_offset = y_offset.cuda() 
-        prediction = prediction.cuda()
+        #prediction = prediction.cuda()
 
     x_y_offset = torch.cat((x_offset, y_offset),1).repeat(1, num_anchors).view(-1,2).unsqueeze(0)
 
     prediction[:,:, :2] += x_y_offset
+    #log space transform height and the width
+    anchors = torch.FloatTensor(anchors)
+    if CUDA:
+        anchors = anchors.cuda()
+    
+    anchors = anchors.repeat(grid_size * grid_size, 1).unsqueeze(0)
+
+    prediction[:,:, 2:4] = torch.exp(prediction[:,:,2:4]) * anchors
 
     #Apply sigmoid to class score 
     prediction[:,:, 5:5+num_classes] = torch.sigmoid((prediction[:,:,5:5+num_classes]))
@@ -67,7 +75,7 @@ def bbox_iou(box1, box2):
     b2_x1, b2_y1, b2_x2, b2_y2 = box2[:,0], box2[:,1], box2[:,2], box2[:,3]
 
     #Get the co-ordinates of the intersection rectangle 
-    inter_rect_x1 = torch.max(b1_x1, b2_x2)
+    inter_rect_x1 = torch.max(b1_x1, b2_x1)
     inter_rect_y1 = torch.max(b1_y1, b2_y1) 
     inter_rect_x2 = torch.max(b1_x2, b2_x2)
     inter_rect_y2 = torch.max(b1_y2, b2_y2)
@@ -97,10 +105,9 @@ def write_results(prediction, confidence, num_classes, nms_conf=0.4):
     box_corner = prediction.new(prediction.shape)
     box_corner[:,:,0] = (prediction[:,:,0] - prediction[:,:,2]/2)
     box_corner[:,:,1] = (prediction[:,:,1] - prediction[:,:,3]/2)
-    box_corner[:,:,2] = (prediction[:,:,0] - prediction[:,:,2]/2)
+    box_corner[:,:,2] = (prediction[:,:,0] + prediction[:,:,2]/2)
     box_corner[:,:,3] = (prediction[:,:,1] + prediction[:,:,3]/2)
     prediction[:,:,:4] = box_corner[:,:,:4]
-
     """
     A batch of size 3, can have variable no. of true detections
     for eg. image1, image2, image3 has 2,3,5 detection boxes. 
@@ -126,6 +133,8 @@ def write_results(prediction, confidence, num_classes, nms_conf=0.4):
         except:
             continue
 
+        if image_pred_.shape[0] == 0:
+            continue 
         # Get the various classes detected in the image 
         img_classes = unique(image_pred_[:, -1]) # -1 index holds the class index 
 
@@ -178,3 +187,32 @@ def write_results(prediction, confidence, num_classes, nms_conf=0.4):
 
 
 
+def load_classes(namesfile): 
+    fp = open(namesfile, "r")
+    names = fp.read().split("\n")[:-1]
+    return names 
+
+def prep_image(img, inp_dim):
+    """
+    Prepare image for inputting to the neural network. 
+    
+    Returns a Variable 
+    """
+    img = (letterbox_image(img, (inp_dim, inp_dim)))
+    img = img[:,:,::-1].transpose((2,0,1)).copy()
+    img = torch.from_numpy(img).float().div(255.0).unsqueeze(0)
+    return img
+
+def letterbox_image(img, inp_dim):
+    '''resize image with unchanged aspect ratio using padding'''
+    img_w, img_h = img.shape[1], img.shape[0]
+    w, h = inp_dim
+    new_w = int(img_w * min(w/img_w, h/img_h))
+    new_h = int(img_h * min(w/img_w, h/img_h))
+    resized_image = cv2.resize(img, (new_w,new_h), interpolation = cv2.INTER_CUBIC)
+    
+    canvas = np.full((inp_dim[1], inp_dim[0], 3), 128)
+
+    canvas[(h-new_h)//2:(h-new_h)//2 + new_h,(w-new_w)//2:(w-new_w)//2 + new_w,  :] = resized_image
+    
+    return canvas
