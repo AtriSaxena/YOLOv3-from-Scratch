@@ -72,7 +72,7 @@ def create_modules(blocks):
 
             activation = x['activation'] 
             try:
-                batch_normalize = x['batch_normalize']
+                batch_normalize = int(x['batch_normalize'])
                 bias = False 
             except:
                 batch_normalize =0 
@@ -105,8 +105,8 @@ def create_modules(blocks):
                 activation_layer = nn.LeakyReLU(0.1, inplace=True)
                 module.add_module(f"leaky_{index}", activation_layer)
         elif x['type'] == "upsample":
-            stride = x['stride']
-            upsample = nn.Upsample(scale_factor=stride, mode="bilinear", align_corners=True)
+            stride = int(x['stride'])
+            upsample = nn.Upsample(scale_factor=2, mode="nearest")
             module.add_module(f"upsample_{index}", upsample)
 
         elif x['type'] == "route":
@@ -299,11 +299,11 @@ class Darknet(nn.Module):
                 conv.weight.data.copy_(conv_weights)
 
 
-model = Darknet("cfg/yolov3.cfg")
-model.load_weights("models/yolov3.weights")
-inp = get_test_input() 
-pred = model(inp, torch.cuda.is_available())
-print(pred)
+#model = Darknet("cfg/yolov3.cfg")
+#model.load_weights("models/yolov3.weights")
+#inp = get_test_input() 
+#pred = model(inp, torch.cuda.is_available())
+#print(pred)
 
 
 
